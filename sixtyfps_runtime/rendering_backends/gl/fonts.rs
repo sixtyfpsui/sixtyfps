@@ -12,6 +12,10 @@ use sixtyfps_corelib::graphics::FontRequest;
 #[cfg(target_arch = "wasm32")]
 use std::cell::Cell;
 use std::cell::RefCell;
+#[cfg(not(target_arch = "wasm32"))]
+use std::collections::HashMap;
+#[cfg(not(target_arch = "wasm32"))]
+use std::rc::Rc;
 
 thread_local! {
     /// Database used to keep track of fonts added by the application
@@ -21,6 +25,34 @@ thread_local! {
 #[cfg(target_arch = "wasm32")]
 thread_local! {
     static WASM_FONT_REGISTERED: Cell<bool> = Cell::new(false)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+thread_local! {
+    static MAPPED_FONTS: RefCell<HashMap<std::path::PathBuf, Rc<memmap2::Mmap>>> = RefCell::default()
+}
+
+pub enum AppOrSystemFont {
+    AppFont(fontdb::ID), // TODO: add true type index
+    #[cfg(not(target_arch = "wasm32"))]
+    SystemFont(Rc<memmap2::Mmap>),
+    Vec(Vec<u8>),
+}
+
+impl femtovg::FontData for AppOrSystemFont {
+    fn with_data<R, F: FnOnce(&[u8]) -> R>(&self, f: F) -> R {
+        match self {
+            AppOrSystemFont::AppFont(id) => APPLICATION_FONTS
+                .with(|font_db| font_db.borrow().with_face_data(*id, |data, _| f(data)).unwrap()),
+            #[cfg(not(target_arch = "wasm32"))]
+            AppOrSystemFont::SystemFont(mmap) => f(mmap.as_ref()),
+            AppOrSystemFont::Vec(vec) => f(&vec),
+        }
+    }
+
+    fn from_slice(data: &[u8]) -> Self {
+        Self::Vec(data.to_vec())
+    }
 }
 
 /// This function can be used to register a custom TrueType font with SixtyFPS,
@@ -57,10 +89,8 @@ pub(crate) fn try_load_app_font(
     APPLICATION_FONTS.with(|font_db| {
         let font_db = font_db.borrow();
         font_db.query(&query).and_then(|id| {
-            font_db.with_face_data(id, |data, _index| {
-                // pass index to femtovg once femtovg/femtovg/pull/21 is merged
-                canvas.borrow_mut().add_font_mem(&data).unwrap()
-            })
+            // TODO index
+            canvas.borrow_mut().add_font_object(AppOrSystemFont::AppFont(id)).ok()
         })
     })
 }
@@ -83,13 +113,64 @@ pub(crate) fn load_system_font(canvas: &CanvasRc, request: &FontRequest) -> femt
     // pass index to femtovg once femtovg/femtovg/pull/21 is merged
     match handle {
         font_kit::handle::Handle::Path { path, font_index: _ } => {
-            canvas.borrow_mut().add_font(path)
+            let mmapped_font_file = MAPPED_FONTS.with(|mapped_fonts| {
+                mapped_fonts
+                    .borrow_mut()
+                    .entry(path)
+                    .or_insert_with_key(|path| {
+                        let r = Rc::new(unsafe {
+                            memmap2::Mmap::map(&std::fs::File::open(path).unwrap()).unwrap()
+                        });
+                        r
+                    })
+                    .clone()
+            });
+            canvas
+                .borrow_mut()
+                .add_font_object(AppOrSystemFont::SystemFont(mmapped_font_file.clone()))
         }
         font_kit::handle::Handle::Memory { bytes, font_index: _ } => {
             canvas.borrow_mut().add_font_mem(bytes.as_slice())
         }
     }
     .unwrap()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn load_fallback_font(canvas: &CanvasRc, request: &FontRequest) -> femtovg::FontId {
+    let handle = font_kit::source::SystemSource::new()
+        .select_by_postscript_name(request.family.as_ref().unwrap())
+        .unwrap();
+
+    // pass index to femtovg once femtovg/femtovg/pull/21 is merged
+    match handle {
+        font_kit::handle::Handle::Path { path, font_index: _ } => {
+            let mmapped_font_file = MAPPED_FONTS.with(|mapped_fonts| {
+                mapped_fonts
+                    .borrow_mut()
+                    .entry(path)
+                    .or_insert_with_key(|path| {
+                        let r = Rc::new(unsafe {
+                            memmap2::Mmap::map(&std::fs::File::open(path).unwrap()).unwrap()
+                        });
+                        r
+                    })
+                    .clone()
+            });
+            canvas
+                .borrow_mut()
+                .add_font_object(AppOrSystemFont::SystemFont(mmapped_font_file.clone()))
+        }
+        font_kit::handle::Handle::Memory { bytes, font_index: _ } => {
+            canvas.borrow_mut().add_font_mem(bytes.as_slice())
+        }
+    }
+    .unwrap()
+}
+
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn load_fallback_font(canvas: &CanvasRc, request: &FontRequest) -> femtovg::FontId {
+    load_system_font(canvas, request)
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -127,7 +208,6 @@ pub(crate) fn font_fallbacks_for_request(_request: &FontRequest) -> Vec<FontRequ
                 letter_spacing: _request.letter_spacing,
             })
             .filter(|fallback| !fallback.family.as_ref().unwrap().starts_with(".")) // font-kit asserts when loading `.Apple Fallback`
-            .take(1) // Take only the top from the fallback list until we mmap the llaaarge font files
             .collect::<Vec<_>>()
         })
         .unwrap_or_default()

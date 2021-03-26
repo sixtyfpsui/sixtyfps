@@ -42,7 +42,7 @@ weak-table =  "0.3"
 scopeguard = "1.1.0"
 cfg-if = "1"
 # Optional dependency to have conversion trait between femtovg::Color and sixtyfps-corelib::Color
-femtovg = { version = "0.1.2", optional = true }
+femtovg = { version = "0.1.2", git = "https://github.com/tronical/femtovg", branch = "simon/font-trait", optional = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 instant = { version = "0.1", features = [ "wasm-bindgen", "now" ] }

@@ -26,7 +26,7 @@ rgb = "0.8"
 imgref = "1.6.1"
 vtable = { version = "0.1", path = "../../../helper_crates/vtable" }
 by_address = "1.0.4"
-femtovg = { version = "0.1.2" }
+femtovg = { version = "0.1.2", git = "https://github.com/tronical/femtovg", branch = "simon/font-trait" }
 euclid = "0.22.1"
 pin-weak = "1"
 scoped-tls-hkt = "0.1"
@@ -51,6 +51,8 @@ winit = { version = "0.24", default-features = false }
 glutin = { version = "0.26", default-features = false }
 glow = { version = "0.7.0", default-features = false }
 font-kit = { version = "0.10", features = ["loader-freetype"] }
+fontdb = { version = "0.5.1", features = ["fs"] }
+memmap2 = { version = "0.2.1" }
 
 # Require font-config from the system. Issue #88 indicates that the copy provided by servo-fontconfig may be incompatible
 # with distros at times.

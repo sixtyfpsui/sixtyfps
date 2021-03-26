@@ -39,7 +39,11 @@ mod images;
 mod svg;
 use images::*;
 
-type CanvasRc = Rc<RefCell<femtovg::Canvas<femtovg::renderer::OpenGl>>>;
+mod fonts;
+pub use fonts::register_font_from_memory;
+use fonts::*;
+
+type CanvasRc = Rc<RefCell<femtovg::Canvas<femtovg::renderer::OpenGl, AppOrSystemFont>>>;
 
 pub const DEFAULT_FONT_SIZE: f32 = 12.;
 pub const DEFAULT_FONT_WEIGHT: i32 = 400; // CSS normal
@@ -107,10 +111,6 @@ impl Default for FontCache {
     }
 }
 
-mod fonts;
-pub use fonts::register_font_from_memory;
-use fonts::*;
-
 impl FontCache {
     fn load_single_font(&mut self, canvas: &CanvasRc, request: &FontRequest) -> femtovg::FontId {
         self.0
@@ -125,6 +125,23 @@ impl FontCache {
             .clone()
     }
 
+    fn load_single_fallback_font(
+        &mut self,
+        canvas: &CanvasRc,
+        request: &FontRequest,
+    ) -> femtovg::FontId {
+        self.0
+            .entry(FontCacheKey {
+                family: request.family.clone().unwrap_or_default(),
+                weight: request.weight.unwrap(),
+            })
+            .or_insert_with(|| {
+                try_load_app_font(canvas, &request)
+                    .unwrap_or_else(|| load_fallback_font(canvas, &request))
+            })
+            .clone()
+    }
+
     fn font(&mut self, canvas: &CanvasRc, mut request: FontRequest, scale_factor: f32) -> GLFont {
         request.pixel_size = request.pixel_size.or(Some(DEFAULT_FONT_SIZE * scale_factor));
         request.weight = request.weight.or(Some(DEFAULT_FONT_WEIGHT));
@@ -132,13 +149,12 @@ impl FontCache {
         let primary_font = self.load_single_font(canvas, &request);
         let fallbacks = font_fallbacks_for_request(&request);
 
-        let fonts = core::iter::once(primary_font)
-            .chain(
-                fallbacks
-                    .iter()
-                    .map(|fallback_request| self.load_single_font(canvas, &fallback_request)),
-            )
-            .collect::<Vec<_>>();
+        let fonts =
+            core::iter::once(primary_font)
+                .chain(fallbacks.iter().map(|fallback_request| {
+                    self.load_single_fallback_font(canvas, &fallback_request)
+                }))
+                .collect::<Vec<_>>();
 
         GLFont { fonts, canvas: canvas.clone(), pixel_size: request.pixel_size.unwrap() }
     }
@@ -627,7 +643,7 @@ impl ItemRenderer for GLItemRenderer {
             TextVerticalAlignment::bottom => max_height - text_size.height,
         };
 
-        let mut draw_line = |canvas: &mut femtovg::Canvas<_>, to_draw: &str| {
+        let mut draw_line = |canvas: &mut femtovg::Canvas<_, _>, to_draw: &str| {
             let text_metrics = canvas.measure_text(0., 0., to_draw, paint).unwrap();
             let translate_x = match horizontal_alignment {
                 TextHorizontalAlignment::left => 0.,
