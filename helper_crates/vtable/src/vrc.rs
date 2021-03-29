@@ -315,3 +315,98 @@ impl<VTable: VTableMetaDropInPlace + 'static, X: HasStaticVTable<VTable> + 'stat
         unsafe { core::mem::transmute(self) }
     }
 }
+
+/// Safety: The data VRc manages is held by `VRcInner`, which maintains its address when the VRc
+/// is moved.
+unsafe impl<VTable: VTableMetaDropInPlace + 'static, X> owning_ref::StableAddress
+    for VRc<VTable, X>
+{
+}
+
+/// Safety: The data VRc manages is held by `VRcInner`, and a clone of a VRc merely clones the pointer
+/// *to* the `VRcInner`.
+unsafe impl<VTable: VTableMetaDropInPlace + 'static, X> owning_ref::CloneStableAddress
+    for VRc<VTable, X>
+{
+}
+
+/// VRcMapped allows bundling a VRc of a type along with a reference to an object that's
+/// reachable through the data the VRc owns and that satisfies the requirements of a Pin.
+/// VRCMapped is constructed using the associated [`map`] function and, like VRc, has
+/// a weak counterpart, [`VWeakMapped`].
+#[derive(Clone)]
+pub struct VRcMapped<VTable: VTableMetaDropInPlace + 'static, MappedType: ?Sized>(
+    owning_ref::OwningRef<VRc<VTable, Dyn>, MappedType>,
+);
+
+impl<VTable: VTableMetaDropInPlace + 'static, MappedType: ?Sized> VRcMapped<VTable, MappedType> {
+    /// Creates a new VRcMapped by making a clone of the given `rc` and calling the provided map
+    /// function callback, which you need to provide and return a pinned reference to the object you
+    /// would like to map.
+    pub fn map<X: HasStaticVTable<VTable> + 'static>(
+        rc: &VRc<VTable, X>,
+        map_fn: impl for<'r> FnOnce(Pin<&'r X>) -> Pin<&'r MappedType>,
+    ) -> Self {
+        let r = owning_ref::OwningRef::new(VRc::into_dyn(rc.clone())).map(|owner| {
+            let owner_pinned = unsafe {
+                // Safety:
+                // We know that the owner parameter had its type erased, but it *is* a VRc<VT, X>.
+                let typed_owner = &*(owner as *const vrc::Dyn as *const X);
+                // Safety:
+                // VRc offers `as_pin_ref` and we know that `owner` is behind a VRc, so we can create the Pin
+                // safely here.
+                Pin::new_unchecked(typed_owner)
+            };
+            map_fn(owner_pinned).get_ref()
+        });
+        Self(r)
+    }
+
+    /// Returns a new [`VWeakMapped`] that points to this instance and can be upgraded back to
+    /// a [`Self`] as long as a `VRc`/`VMapped` exists.
+    pub fn downgrade(this: &Self) -> VWeakMapped<VTable, MappedType> {
+        VWeakMapped {
+            parent_weak: VRc::downgrade(this.0.as_owner()),
+            object: this.deref() as *const MappedType,
+        }
+    }
+
+    /// Create a Pinned reference to the mapped type.
+    ///
+    /// This is safe because the map function returns a pinned reference.
+    pub fn as_pin_ref(&self) -> Pin<&MappedType> {
+        unsafe { Pin::new_unchecked(&*self) }
+    }
+}
+
+impl<VTable: VTableMetaDropInPlace + 'static, MappedType: ?Sized> Deref
+    for VRcMapped<VTable, MappedType>
+{
+    type Target = MappedType;
+    fn deref(&self) -> &Self::Target {
+        self.0.deref()
+    }
+}
+
+/// VWeakMapped allows bundling a VWeak with a reference to an object that's reachable
+/// from the object a successfully upgraded VWeak points to. VWeakMapped's API consists
+/// only of the ability to create clones and to attempt upgrading back to a [`VRcMapped`].
+#[derive(Clone)]
+pub struct VWeakMapped<VTable: VTableMetaDropInPlace + 'static, MappedType: ?Sized> {
+    parent_weak: VWeak<VTable, Dyn>,
+    object: *const MappedType,
+}
+
+impl<VTable: VTableMetaDropInPlace + 'static, MappedType: ?Sized> VWeakMapped<VTable, MappedType> {
+    /// Returns a new `VRcMapped` if some other instance still holds a strong reference to the owned
+    /// object. Otherwise, returns None.
+    pub fn upgrade(&self) -> Option<VRcMapped<VTable, MappedType>> {
+        self.parent_weak.upgrade().map(|parent| {
+            VRcMapped(owning_ref::OwningRef::new(parent).map(|_| {
+                // Safety: The `VWeakMapped` was previously created from a correctly created `VrcMapped`,
+                // so if the Vrc is still valid, so is this pointer.
+                unsafe { &*self.object }
+            }))
+        })
+    }
+}

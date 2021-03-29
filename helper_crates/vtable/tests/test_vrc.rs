@@ -21,6 +21,7 @@ struct FooVTable {
 
 #[derive(Debug, const_field_offset::FieldOffsets)]
 #[repr(C)]
+#[pin]
 struct SomeStruct {
     e: u8,
     x: String,
@@ -149,4 +150,72 @@ fn rc_test_threading() {
     let h = std::thread::spawn(move || drop(rc));
     drop(weak);
     h.join().unwrap();
+}
+
+#[vtable]
+struct AppVTable {
+    drop_in_place: fn(VRefMut<AppVTable>) -> Layout,
+    dealloc: fn(&AppVTable, ptr: *mut u8, layout: Layout),
+}
+
+#[derive(Debug, const_field_offset::FieldOffsets)]
+#[repr(C)]
+#[pin]
+struct AppStruct {
+    some: SomeStruct,
+    another_struct: SomeStruct,
+}
+
+impl AppStruct {
+    fn new() -> VRc<AppVTable, Self> {
+        let string = Rc::new("hello".to_string());
+        let self_ = Self {
+            some: SomeStruct { e: 55, x: "_".into(), foo: string.clone() },
+            another_struct: SomeStruct { e: 100, x: "_".into(), foo: string.clone() },
+        };
+        VRc::new(self_)
+    }
+}
+
+impl App for AppStruct {}
+
+AppVTable_static!(static APP_STRUCT_TYPE for AppStruct);
+
+#[test]
+fn rc_map_test() {
+    fn get_struct_value(instance: &VRcMapped<AppVTable, SomeStruct>) -> u8 {
+        let field_ref = SomeStruct::FIELD_OFFSETS.e.apply_pin(instance.as_pin_ref());
+        *field_ref
+    }
+
+    let app_rc = AppStruct::new();
+
+    let some_struct_ref =
+        VRcMapped::map(&app_rc, |app| AppStruct::FIELD_OFFSETS.some.apply_pin(app));
+    let other_struct_ref =
+        VRcMapped::map(&app_rc, |app| AppStruct::FIELD_OFFSETS.another_struct.apply_pin(app));
+
+    let weak_struct_ref = VRcMapped::downgrade(&some_struct_ref);
+
+    {
+        let strong_struct_ref = weak_struct_ref.upgrade().unwrap();
+        assert_eq!(get_struct_value(&strong_struct_ref), 55);
+    }
+
+    {
+        assert_eq!(get_struct_value(&other_struct_ref), 100);
+    }
+
+    drop(app_rc);
+
+    {
+        let strong_struct_ref = weak_struct_ref.upgrade().unwrap();
+        let e_field = SomeStruct::FIELD_OFFSETS.e.apply_pin(strong_struct_ref.as_pin_ref());
+        assert_eq!(*e_field, 55);
+    }
+
+    drop(some_struct_ref);
+    drop(other_struct_ref);
+
+    assert!(weak_struct_ref.upgrade().is_none());
 }

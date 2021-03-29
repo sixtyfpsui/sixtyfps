@@ -13,3 +13,4 @@ homepage = "https://sixtyfps.io"
 [dependencies]
 vtable-macro = { version = "=0.1.2", path = "./macro" }
 const-field-offset = { version = "0.1", path = "../const-field-offset" }
+owning_ref = { version = "0.4.1" }
