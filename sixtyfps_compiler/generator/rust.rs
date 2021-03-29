@@ -174,7 +174,7 @@ fn handle_property_binding(
             )
         } else {
             (
-                quote!(let self_weak = sixtyfps::re_exports::VRc::downgrade(&self_rc);),
+                quote!(let self_weak = sixtyfps::re_exports::VRcMapped::downgrade(self_mapped);),
                 quote!(
                     let self_rc = self_weak.upgrade().unwrap();
                     let _self = self_rc.as_pin_ref();
@@ -297,6 +297,7 @@ fn generate_component(
         };
 
         if let Type::Callback { args, return_type } = &property_decl.property_type {
+
             let callback_args = args
                 .iter()
                 .map(|a| get_rust_type(a, &property_decl.type_node(), diag))
@@ -311,12 +312,14 @@ fn generate_component(
                     .collect::<Vec<_>>();
                 let caller_ident = format_ident!("invoke_{}", prop_name);
                 property_and_callback_accessors.push(quote!(
+
                     #[allow(dead_code)]
                     pub fn #caller_ident(&self, #(#args_name : #callback_args,)*) -> #return_type {
                         let _self = vtable::VRc::as_pin_ref(&self.0);
                         #prop.call(&(#(#args_name,)*))
                     }
                 ));
+
 
                 let on_ident = format_ident!("on_{}", prop_name);
                 let args_index =
@@ -347,6 +350,7 @@ fn generate_component(
             if property_decl.expose_in_public_api {
                 let getter_ident = format_ident!("get_{}", prop_name);
                 let setter_ident = format_ident!("set_{}", prop_name);
+
 
                 property_and_callback_accessors.push(quote!(
                     #[allow(dead_code)]
@@ -395,13 +399,20 @@ fn generate_component(
     let mut repeated_visit_branch = Vec::new();
     let mut repeated_input_branch = Vec::new();
     let mut init = Vec::new();
+    let mut binding_and_handler_setup_code = Vec::new();
     let mut window_field_init = None;
     let mut window_parent_param = None;
     super::build_array_helper(component, |item_rc, children_index, parent_index| {
+
         let parent_index = parent_index as u32;
         let item = item_rc.borrow();
         if item.base_type == Type::Void {
+
             assert!(component.is_global());
+
+
+
+
         } else if let Some(repeated) = &item.repeated {
             let base_component = item.base_type.as_component();
             let repeater_index = repeated_element_names.len();
@@ -436,6 +447,7 @@ fn generate_component(
                     ) {
                         use sixtyfps::re_exports::*;
                         let vp_w = viewport_width.get();
+
                         #p_y.set(*offset_y);
                         *offset_y += #p_height.get();
                         let w = #p_width.get();
@@ -446,12 +458,14 @@ fn generate_component(
                 }
             } else {
                 // TODO: we could generate this code only if we know that this component is in a box layout
+
                 quote! {
                     fn box_layout_data(self: ::core::pin::Pin<&Self>, o: sixtyfps::re_exports::Orientation)
                         -> sixtyfps::re_exports::BoxLayoutCellData
                     {
                         use sixtyfps::re_exports::*;
                         BoxLayoutCellData { constraint: self.as_ref().layout_info(o) }
+
                     }
                 }
             };
@@ -467,6 +481,7 @@ fn generate_component(
             } else {
                 let data_type = get_rust_type(
                     &Expression::RepeaterModelReference { element: Rc::downgrade(item_rc) }.ty(),
+
                     &item.node.as_ref().map(|x| x.to_source_location()),
                     diag,
                 );
@@ -490,7 +505,7 @@ fn generate_component(
             }
 
             // FIXME: there could be an optimization if `repeated.model.is_constant()`, we don't need a binding
-            init.push(quote! {
+            binding_and_handler_setup_code.push(quote! {
                 _self.#repeater_id.set_model_binding({
                     let self_weak = sixtyfps::re_exports::VRc::downgrade(&self_rc);
                     move || {
@@ -503,6 +518,7 @@ fn generate_component(
 
             if let Some(listview) = &repeated.is_listview {
                 let vp_y = access_named_reference(&listview.viewport_y, component, quote!(_self));
+
                 let vp_h =
                     access_named_reference(&listview.viewport_height, component, quote!(_self));
                 let lv_h =
@@ -581,6 +597,7 @@ fn generate_component(
             let field_name = format_ident!("{}", item.id);
             let children_count = item.children.len() as u32;
 
+
             item_tree_array.push(quote!(
                 sixtyfps::re_exports::ItemTreeNode::Item{
                     item: VOffset::new(#inner_component_id::FIELD_OFFSETS.#field_name),
@@ -589,6 +606,10 @@ fn generate_component(
                     parent_index: #parent_index,
                 }
             ));
+
+
+
+
             item_names.push(field_name);
             item_types.push(format_ident!("{}", item.base_type.as_native().class_name));
         }
@@ -762,18 +783,28 @@ fn generate_component(
         .map(|g| (format_ident!("global_{}", g.id), self::inner_component_id(g)))
         .unzip();
 
-    let new_code = if !component.is_global() {
-        quote! {
+    let (new_code, self_mapped_type, self_mapped_init_code) = if !component.is_global() {
+        (
+            quote! {
             let self_rc = VRc::new(self_);
             self_rc.self_weak.set(VRc::downgrade(&self_rc)).map_err(|_|())
-                .expect("Can only be pinned once");
+                    .expect("Can only be pinned once");
             let _self = self_rc.as_pin_ref();
-        }
+                let self_mapped = sixtyfps::re_exports::VRcMapped::map(&self_rc, |s| s);
+            },
+            quote!(&sixtyfps::re_exports::VRcMapped<sixtyfps::re_exports::ComponentVTable, Self>),
+            quote!(self_mapped.as_pin_ref()),
+        )
     } else {
-        quote! {
+        (
+            quote! {
             let self_rc = ::std::rc::Rc::pin(self_);
             let _self = self_rc.as_ref();
-        }
+                let self_mapped = self_pinned;
+            },
+            quote!(&Self),
+            quote!(self_mapped),
+        )
     };
     let self_weak = if !component.is_global() { Some(quote!(self_weak)) } else { None };
     let self_weak = self_weak.into_iter().collect::<Vec<_>>();
@@ -869,6 +900,12 @@ fn generate_component(
         #component_impl
 
         impl #inner_component_id{
+            fn init(self_mapped: #self_mapped_type)
+            {
+                let _self = #self_mapped_init_code;
+                #(#binding_and_handler_setup_code)*
+            }
+
             pub fn new(#(parent: sixtyfps::re_exports::VWeak::<sixtyfps::re_exports::ComponentVTable, #parent_component_type>)* #window_parent_param)
                 -> #component_handle
             {
@@ -886,6 +923,7 @@ fn generate_component(
                 };
                 #new_code
                 #(#init)*
+                Self::init(&self_mapped);
                 self_rc.into()
             }
             #item_tree_impl
@@ -1654,15 +1692,18 @@ fn compile_assignment(
 fn grid_layout_cell_data(
     layout: &crate::layout::GridLayout,
     orientation: Orientation,
+
     component: &Rc<Component>,
 ) -> TokenStream {
     let cells = layout.elems.iter().map(|c| {
         let (col_or_row, span) = c.col_or_row_and_span(orientation);
         let layout_info =
             get_layout_info(&c.item.element, component, &c.item.constraints, orientation);
+
         quote!(GridLayoutCellData {
             col_or_row: #col_or_row,
             span: #span,
+
             constraint: #layout_info,
         })
     });
@@ -1684,8 +1725,10 @@ fn box_layout_data(
         quote!(::core::default::Default::default())
     };
 
+
     let repeater_count =
         layout.elems.iter().filter(|i| i.element.borrow().repeated.is_some()).count();
+
 
     if repeater_count == 0 {
         let cells = layout.elems.iter().map(|li| {
@@ -1696,6 +1739,7 @@ fn box_layout_data(
             **ri = quote!([]);
         }
         (quote!([ #(#cells),* ]), alignment)
+
     } else {
         let mut fixed_count = 0usize;
         let mut repeated_count = quote!();
@@ -1742,6 +1786,7 @@ fn box_layout_data(
         }
         (
             quote! { {
+
                 let mut items_vec = Vec::with_capacity(#fixed_count #repeated_count);
                 #push_code
                 items_vec
@@ -1750,6 +1795,7 @@ fn box_layout_data(
         )
     }
 }
+
 
 fn generate_layout_padding_and_spacing(
     layout_geometry: &LayoutGeometry,
@@ -1770,6 +1816,7 @@ fn generate_layout_padding_and_spacing(
     let padding = quote!(&sixtyfps::re_exports::Padding { begin: #begin, end: #end });
 
     (padding, spacing)
+
 }
 
 fn layout_geometry_size(
@@ -1801,12 +1848,14 @@ fn compute_layout(component: &Rc<Component>) -> TokenStream {
                 sixtyfps::re_exports::Orientation::Horizontal => #layout_info_h,
                 sixtyfps::re_exports::Orientation::Vertical => #layout_info_v,
             }
+
         }
     }
 }
 
 fn get_layout_info(
     elem: &ElementRc,
+
     component: &Rc<Component>,
     constraints: &crate::layout::LayoutConstraints,
     orientation: Orientation,
@@ -1818,7 +1867,10 @@ fn get_layout_info(
         let elem_id = format_ident!("{}", elem.borrow().id);
         let inner_component_id = inner_component_id(component);
         quote!(#inner_component_id::FIELD_OFFSETS.#elem_id.apply_pin(_self).layouting_info(#orientation, &_self.window))
+
     };
+
+
 
     if constraints.has_explicit_restrictions() {
         let (name, expr): (Vec<_>, Vec<_>) = constraints
@@ -1836,6 +1888,7 @@ fn get_layout_info(
         layout_info
     }
 }
+
 
 fn compile_path_events(events: &crate::expression_tree::PathEvents) -> TokenStream {
     use lyon_path::Event;
