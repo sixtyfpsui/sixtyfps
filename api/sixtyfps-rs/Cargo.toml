@@ -22,7 +22,7 @@ default = ["backend-gl", "backend-qt"]
 once_cell = "1.5"
 sixtyfps-macros = { version = "=0.1.0", path = "sixtyfps-macros" }
 const-field-offset = { version = "0.1", path = "../../helper_crates/const-field-offset" }
-vtable = { version = "0.1.2", path = "../../helper_crates/vtable" }
+vtable = { version = "0.1.3", path = "../../helper_crates/vtable" }
 sixtyfps-corelib = { version = "=0.1.0", path="../../sixtyfps_runtime/corelib" }
 sixtyfps-rendering-backend-default = { version = "=0.1.0", path="../../sixtyfps_runtime/rendering_backends/default" }
 pin-weak = "1"
