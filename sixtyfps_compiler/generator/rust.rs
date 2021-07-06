@@ -779,7 +779,7 @@ fn generate_component(
                 self_rc.self_weak.set(VRc::downgrade(&self_rc)).map_err(|_|())
                         .expect("Can only be pinned once");
                 let _self = self_rc.as_pin_ref();
-                let self_mapped = sixtyfps::re_exports::VRcMapped::map(&self_rc, |s| s);
+                let self_mapped = sixtyfps::re_exports::VRc::map(self_rc.clone(), |s| s);
             },
             quote!(&sixtyfps::re_exports::VRcMapped<sixtyfps::re_exports::ComponentVTable, Self>),
             quote!(self_mapped.as_pin_ref()),

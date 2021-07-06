@@ -191,9 +191,9 @@ fn rc_map_test() {
     let app_rc = AppStruct::new();
 
     let some_struct_ref =
-        VRcMapped::map(&app_rc, |app| AppStruct::FIELD_OFFSETS.some.apply_pin(app));
+        VRc::map(app_rc.clone(), |app| AppStruct::FIELD_OFFSETS.some.apply_pin(app));
     let other_struct_ref =
-        VRcMapped::map(&app_rc, |app| AppStruct::FIELD_OFFSETS.another_struct.apply_pin(app));
+        VRc::map(app_rc.clone(), |app| AppStruct::FIELD_OFFSETS.another_struct.apply_pin(app));
 
     let weak_struct_ref = VRcMapped::downgrade(&some_struct_ref);
 
