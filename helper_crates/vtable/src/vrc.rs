@@ -358,7 +358,6 @@ unsafe impl<VTable: VTableMetaDropInPlace + 'static, X> owning_ref::CloneStableA
 /// VRcMapped allows bundling a VRc of a type along with a reference to an object that's
 /// reachable through the data the VRc owns and that satisfies the requirements of a Pin.
 /// VRCMapped is constructed using [`VRc::map`] and, like VRc, has a weak counterpart, [`VWeakMapped`].
-#[derive(Clone)]
 pub struct VRcMapped<VTable: VTableMetaDropInPlace + 'static, MappedType: ?Sized>(
     owning_ref::OwningRef<VRc<VTable, Dyn>, MappedType>,
 );
@@ -385,6 +384,19 @@ impl<VTable: VTableMetaDropInPlace + 'static, MappedType: ?Sized> VRcMapped<VTab
     pub fn origin(this: &Self) -> VRc<VTable> {
         this.0.as_owner().clone()
     }
+
+    /// Erase the type and return a [`VRcMappedDyn`]
+    pub fn into_dyn<MappedVTable: VTableMeta>(this: &Self) -> VRcMappedDyn<VTable, MappedVTable>
+    where
+        MappedType: Sized + HasStaticVTable<MappedVTable>,
+    {
+        VRcMappedDyn {
+            mapped: VRcMapped(
+                this.0.clone().map(|r| unsafe { core::mem::transmute::<&MappedType, &Dyn>(r) }),
+            ),
+            mapped_vtable: <MappedType as HasStaticVTable<MappedVTable>>::static_vtable(),
+        }
+    }
 }
 
 impl<VTable: VTableMetaDropInPlace + 'static, MappedType: ?Sized> Deref
@@ -396,13 +408,28 @@ impl<VTable: VTableMetaDropInPlace + 'static, MappedType: ?Sized> Deref
     }
 }
 
+impl<VTable: VTableMetaDropInPlace + 'static, MappedType: ?Sized> Clone
+    for VRcMapped<VTable, MappedType>
+{
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
 /// VWeakMapped allows bundling a VWeak with a reference to an object that's reachable
 /// from the object a successfully upgraded VWeak points to. VWeakMapped's API consists
 /// only of the ability to create clones and to attempt upgrading back to a [`VRcMapped`].
-#[derive(Clone)]
 pub struct VWeakMapped<VTable: VTableMetaDropInPlace + 'static, MappedType: ?Sized> {
     parent_weak: VWeak<VTable, Dyn>,
     object: *const MappedType,
+}
+
+impl<VTable: VTableMetaDropInPlace + 'static, MappedType: ?Sized> Clone
+    for VWeakMapped<VTable, MappedType>
+{
+    fn clone(&self) -> Self {
+        Self { parent_weak: self.parent_weak.clone(), object: self.object }
+    }
 }
 
 impl<VTable: VTableMetaDropInPlace + 'static, MappedType: ?Sized> VWeakMapped<VTable, MappedType> {
@@ -416,5 +443,73 @@ impl<VTable: VTableMetaDropInPlace + 'static, MappedType: ?Sized> VWeakMapped<VT
                 unsafe { &*self.object }
             }))
         })
+    }
+}
+
+/// This is the same a [`VRcMapped`], but the `MappedType` is not a concrete type.
+/// The second type parameter is a "VTable" type, that is using the
+/// [`#[vtable]`](crate::vtable) macro.
+/// `VRcMappedDyn<FooVTable, BarVTable>` is conceptually the same as `VRcMapped<FooVTable, dyn Bar>`
+///
+/// The `OriginVTable` parametter is the VTable parameter from the [`VRc`] from which we map, and
+/// the `MappedVTable` is the VTable of the mapped type.
+#[derive(Clone)]
+pub struct VRcMappedDyn<OriginVTable: VTableMetaDropInPlace + 'static, MappedVTable: VTableMeta> {
+    mapped: VRcMapped<OriginVTable, Dyn>,
+    mapped_vtable: &'static MappedVTable::VTable,
+}
+
+impl<OriginVTable: VTableMetaDropInPlace + 'static, MappedVTable: VTableMeta>
+    VRcMappedDyn<OriginVTable, MappedVTable>
+{
+    /// Returns a new [`VWeakMappedDyn`] that points to this instance and can be upgraded back
+    /// as long as a `VRc`/`VMapped` exists.
+    pub fn downgrade(this: &Self) -> VWeakMappedDyn<OriginVTable, MappedVTable> {
+        VWeakMappedDyn {
+            mapped: VRcMapped::downgrade(&this.mapped),
+            mapped_vtable: &this.mapped_vtable,
+        }
+    }
+
+    /// Gets a [`VRef`] pointing to this instance
+    pub fn borrow(this: &Self) -> VRef<'_, MappedVTable> {
+        // Safety: we know that the ptr is a valid instance corresponding to the MAppedVTable
+        unsafe {
+            let ptr = NonNull::from(this.mapped.0.deref());
+            VRef::from_raw(NonNull::from(this.mapped_vtable), ptr.cast())
+        }
+    }
+
+    /// Gets a Pin pointing to this instance
+    pub fn borrow_pin(this: &Self) -> Pin<VRef<'_, MappedVTable>> {
+        // Safety: the map function returns a pin
+        unsafe { Pin::new_unchecked(Self::borrow(this)) }
+    }
+
+    /// Returns a strong reference to the object that the mapping originates
+    /// from.
+    pub fn origin(this: &Self) -> VRc<OriginVTable> {
+        VRcMapped::origin(&this.mapped)
+    }
+}
+
+/// VWeakMapped allows bundling a VWeak with a reference to an object that's reachable
+/// from the object a successfully upgraded VWeak points to. VWeakMapped's API consists
+/// only of the ability to create clones and to attempt upgrading back to a [`VRcMapped`].
+#[derive(Clone)]
+pub struct VWeakMappedDyn<OriginVTable: VTableMetaDropInPlace + 'static, MappedVTable: VTableMeta> {
+    mapped: VWeakMapped<OriginVTable, Dyn>,
+    mapped_vtable: &'static MappedVTable::VTable,
+}
+
+impl<OriginVTable: VTableMetaDropInPlace + 'static, MappedVTable: VTableMeta>
+    VWeakMappedDyn<OriginVTable, MappedVTable>
+{
+    /// Returns a `VRcMappedDyn` if some other instance still holds a strong reference to the owned
+    /// object. Otherwise, returns None.
+    pub fn upgrade(&self) -> Option<VRcMappedDyn<OriginVTable, MappedVTable>> {
+        self.mapped
+            .upgrade()
+            .map(|mapped| VRcMappedDyn { mapped, mapped_vtable: self.mapped_vtable })
     }
 }

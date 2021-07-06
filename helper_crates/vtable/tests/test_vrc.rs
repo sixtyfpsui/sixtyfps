@@ -168,10 +168,9 @@ struct AppStruct {
 
 impl AppStruct {
     fn new() -> VRc<AppVTable, Self> {
-        let string = Rc::new("hello".to_string());
         let self_ = Self {
-            some: SomeStruct { e: 55, x: "_".into(), foo: string.clone() },
-            another_struct: SomeStruct { e: 100, x: "_".into(), foo: string.clone() },
+            some: SomeStruct { e: 55, x: "_".into(), foo: Rc::new("some".into()) },
+            another_struct: SomeStruct { e: 100, x: "_".into(), foo: Rc::new("another".into()) },
         };
         VRc::new(self_)
     }
@@ -240,4 +239,31 @@ fn rc_map_origin() {
     drop(strong_origin);
 
     assert!(weak_origin.upgrade().is_none());
+}
+
+#[test]
+fn rc_map_dyn_test() {
+    let app_rc = AppStruct::new();
+
+    let some_struct_ref = VRcMapped::into_dyn::<FooVTable>(&VRc::map(app_rc.clone(), |app| {
+        AppStruct::FIELD_OFFSETS.some.apply_pin(app)
+    }));
+    assert_eq!(VRcMappedDyn::borrow(&some_struct_ref).rc_string().as_str(), "some");
+
+    let weak_struct_ref = VRcMappedDyn::downgrade(&some_struct_ref);
+
+    {
+        let strong_struct_ref = weak_struct_ref.upgrade().unwrap();
+        assert_eq!(VRcMappedDyn::borrow(&strong_struct_ref).rc_string().as_str(), "some");
+    }
+
+    drop(app_rc);
+
+    {
+        let strong_struct_ref = weak_struct_ref.upgrade().unwrap();
+        assert_eq!(VRcMappedDyn::borrow(&strong_struct_ref).rc_string().as_str(), "some");
+    }
+
+    drop(some_struct_ref);
+    assert!(weak_struct_ref.upgrade().is_none());
 }
