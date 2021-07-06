@@ -397,6 +397,27 @@ impl<VTable: VTableMetaDropInPlace + 'static, MappedType: ?Sized> VRcMapped<VTab
             mapped_vtable: <MappedType as HasStaticVTable<MappedVTable>>::static_vtable(),
         }
     }
+
+    /// This function allows safely holding a reference to a field inside the `VRcMapped`. In order to accomplish
+    /// that, you need to provide a mapping function `map_fn` in which you need to provide and return a
+    /// pinned reference to the object you would like to map. The returned `VRcMapped` allows obtaining
+    /// that pinned reference again using [`VRcMapped::as_pin_ref`].
+    ///
+    /// See also [`VRc::map`]
+    pub fn map<ReMappedType: ?Sized>(
+        this: Self,
+        map_fn: impl for<'r> FnOnce(Pin<&'r MappedType>) -> Pin<&'r ReMappedType>,
+    ) -> VRcMapped<VTable, ReMappedType> {
+        VRcMapped(this.0.map(|this_ref| {
+            let this_pinned = unsafe {
+                // Safety:
+                // VRc offers `as_pin_ref` and we know that `owner` is behind a VRc, so we can create the Pin
+                // safely here.
+                Pin::new_unchecked(this_ref)
+            };
+            map_fn(this_pinned).get_ref()
+        }))
+    }
 }
 
 impl<VTable: VTableMetaDropInPlace + 'static, MappedType: ?Sized> Deref

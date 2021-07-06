@@ -213,10 +213,16 @@ fn rc_map_test() {
         assert_eq!(*e_field, 55);
     }
 
+    let double_map =
+        VRcMapped::map(other_struct_ref, |some| SomeStruct::FIELD_OFFSETS.e.apply_pin(some));
+    let double_map_weak = VRcMapped::downgrade(&double_map);
+    drop(double_map);
+    assert_eq!(*double_map_weak.upgrade().unwrap(), 100);
+
     drop(some_struct_ref);
-    drop(other_struct_ref);
 
     assert!(weak_struct_ref.upgrade().is_none());
+    assert!(double_map_weak.upgrade().is_none());
 }
 
 #[test]
