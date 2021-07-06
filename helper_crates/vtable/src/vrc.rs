@@ -379,6 +379,12 @@ impl<VTable: VTableMetaDropInPlace + 'static, MappedType: ?Sized> VRcMapped<VTab
     pub fn as_pin_ref(&self) -> Pin<&MappedType> {
         unsafe { Pin::new_unchecked(&*self) }
     }
+
+    /// Returns a strong reference to the object that the mapping originates
+    /// from.
+    pub fn origin(this: &Self) -> VRc<VTable> {
+        this.0.as_owner().clone()
+    }
 }
 
 impl<VTable: VTableMetaDropInPlace + 'static, MappedType: ?Sized> Deref

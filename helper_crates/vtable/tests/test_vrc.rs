@@ -219,3 +219,25 @@ fn rc_map_test() {
 
     assert!(weak_struct_ref.upgrade().is_none());
 }
+
+#[test]
+fn rc_map_origin() {
+    let app_rc = AppStruct::new();
+
+    let some_struct_ref =
+        VRc::map(app_rc.clone(), |app| AppStruct::FIELD_OFFSETS.some.apply_pin(app));
+
+    drop(app_rc);
+
+    let strong_origin = VRcMapped::origin(&some_struct_ref);
+
+    drop(some_struct_ref);
+
+    let weak_origin = VRc::downgrade(&strong_origin);
+
+    assert_eq!(VRc::strong_count(&strong_origin), 1);
+
+    drop(strong_origin);
+
+    assert!(weak_origin.upgrade().is_none());
+}
