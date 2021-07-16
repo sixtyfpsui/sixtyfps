@@ -56,6 +56,10 @@ export Button := Rectangle {
 
         if (icon.width > 0 && icon.height > 0): Image {
             source <=> icon;
+            // Avoid that the icon makes the button grow. This isn't quite a perfect approximation,
+            // as the glyphs are typically a bit smaller than the font size. 12px is the default
+            // in the GL backend.
+            height: root.font-size > 0 ? root.font-size : 12px;
         }
 
         Text {
