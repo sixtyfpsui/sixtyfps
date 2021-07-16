@@ -44,6 +44,17 @@ App := Window {
             }
 
             GroupBox {
+                title: "Button with Icon";
+                enabled: !disable_toggle.checked;
+
+                Button {
+                    text: "Regular Button";
+                    icon: @image-url("thumbsup.svg");
+                    enabled: !disable_toggle.checked;
+                }
+            }
+
+            GroupBox {
                 title: "CheckBox";
                 enabled: !disable_toggle.checked;
                 checkbox := CheckBox {
