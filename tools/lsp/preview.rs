@@ -140,7 +140,7 @@ pub fn load_preview(
     post_load_behavior: PostLoadBehavior,
 ) {
     use std::sync::atomic::{AtomicU32, Ordering};
-    const PENDING_EVENTS: AtomicU32 = AtomicU32::new(0);
+    static PENDING_EVENTS: AtomicU32 = AtomicU32::new(0);
     if PENDING_EVENTS.load(Ordering::SeqCst) > 0 {
         return;
     }

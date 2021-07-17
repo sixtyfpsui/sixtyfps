@@ -207,13 +207,11 @@ pub fn run(quit_behavior: sixtyfps_corelib::backend::EventLoopQuitBehavior) {
                     event: winit::event::WindowEvent::CloseRequested,
                     window_id,
                 } => {
-                    ALL_WINDOWS
-                        .with(|windows| {
-                            windows.borrow().get(&window_id).and_then(|weakref| weakref.upgrade())
-                        })
-                        .map(|window_rc| {
-                            window_rc.hide();
-                        });
+                    if let Some(window_rc) = ALL_WINDOWS.with(|windows| {
+                        windows.borrow().get(&window_id).and_then(|weakref| weakref.upgrade())
+                    }) {
+                        window_rc.hide();
+                    }
                     match quit_behavior {
                         corelib::backend::EventLoopQuitBehavior::QuitOnLastWindowClosed => {
                             let window_count = ALL_WINDOWS.with(|windows| windows.borrow().len());

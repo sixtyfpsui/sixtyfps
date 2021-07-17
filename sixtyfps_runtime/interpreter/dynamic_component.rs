@@ -1060,7 +1060,7 @@ pub fn instantiate<'id>(
                                 let mut local_context =
                                     eval::EvalLocalContext::from_function_arguments(
                                         InstanceRef::from_pin_ref(c, guard),
-                                        args.iter().cloned().collect(),
+                                        args.to_vec(),
                                     );
                                 eval::eval_expression(&expr, &mut local_context)
                             }),

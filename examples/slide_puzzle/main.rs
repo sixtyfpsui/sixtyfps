@@ -100,7 +100,9 @@ impl AppState {
             return false;
         };
         self.apply_tiles_left();
-        self.main_window.upgrade().map(|x| x.set_moves(x.get_moves() + 1));
+        if let Some(x) = self.main_window.upgrade() {
+            x.set_moves(x.get_moves() + 1);
+        }
         true
     }
 

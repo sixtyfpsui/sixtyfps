@@ -528,8 +528,12 @@ impl ItemRenderer for GLItemRenderer {
         });
 
         let mut canvas = self.shared_data.canvas.borrow_mut();
-        fill_paint.map(|paint| canvas.fill_path(&mut path, paint));
-        border_paint.map(|border_paint| canvas.stroke_path(&mut path, border_paint));
+        if let Some(paint) = fill_paint {
+            canvas.fill_path(&mut path, paint);
+        }
+        if let Some(border_paint) = border_paint {
+            canvas.stroke_path(&mut path, border_paint);
+        }
     }
 
     fn draw_image(&mut self, image: std::pin::Pin<&sixtyfps_corelib::items::ImageItem>) {
@@ -806,10 +810,9 @@ impl ItemRenderer for GLItemRenderer {
                 text_input.text_cursor_width() * self.scale_factor,
                 font.height(),
             );
-            let text_paint = self.brush_to_paint(text_input.color(), &mut cursor_rect);
-            text_paint.map(|text_paint| {
+            if let Some(text_paint) = self.brush_to_paint(text_input.color(), &mut cursor_rect) {
                 self.shared_data.canvas.borrow_mut().fill_path(&mut cursor_rect, text_paint)
-            });
+            }
         }
     }
 
@@ -900,8 +903,12 @@ impl ItemRenderer for GLItemRenderer {
 
         self.shared_data.canvas.borrow_mut().save_with(|canvas| {
             canvas.translate(offset.x, offset.y);
-            fill_paint.map(|fill_paint| canvas.fill_path(&mut fpath, fill_paint));
-            border_paint.map(|border_paint| canvas.stroke_path(&mut fpath, border_paint));
+            if let Some(fill_paint) = fill_paint {
+                canvas.fill_path(&mut fpath, fill_paint);
+            }
+            if let Some(border_paint) = border_paint {
+                canvas.stroke_path(&mut fpath, border_paint);
+            }
         })
     }
 

@@ -302,44 +302,48 @@ pub(crate) fn fill_layout_info_constraints(
 
     match orientation {
         Orientation::Horizontal => {
-            constraints.min_width.as_ref().map(|e| {
+            if let Some(e) = constraints.min_width.as_ref() {
                 if !is_percent(e) {
                     layout_info.min = expr_eval(e)
                 } else {
                     layout_info.min_percent = expr_eval(e)
                 }
-            });
-            constraints.max_width.as_ref().map(|e| {
+            }
+            if let Some(e) = constraints.max_width.as_ref() {
                 if !is_percent(e) {
                     layout_info.max = expr_eval(e)
                 } else {
                     layout_info.max_percent = expr_eval(e)
                 }
-            });
-            constraints.preferred_width.as_ref().map(|e| {
+            }
+            if let Some(e) = constraints.preferred_width.as_ref() {
                 layout_info.preferred = expr_eval(e);
-            });
-            constraints.horizontal_stretch.as_ref().map(|e| layout_info.stretch = expr_eval(e));
+            }
+            if let Some(e) = constraints.horizontal_stretch.as_ref() {
+                layout_info.stretch = expr_eval(e);
+            }
         }
         Orientation::Vertical => {
-            constraints.min_height.as_ref().map(|e| {
+            if let Some(e) = constraints.min_height.as_ref() {
                 if !is_percent(e) {
                     layout_info.min = expr_eval(e)
                 } else {
                     layout_info.min_percent = expr_eval(e)
                 }
-            });
-            constraints.max_height.as_ref().map(|e| {
+            }
+            if let Some(e) = constraints.max_height.as_ref() {
                 if !is_percent(e) {
                     layout_info.max = expr_eval(e)
                 } else {
                     layout_info.max_percent = expr_eval(e)
                 }
-            });
-            constraints.preferred_height.as_ref().map(|e| {
+            }
+            if let Some(e) = constraints.preferred_height.as_ref() {
                 layout_info.preferred = expr_eval(e);
-            });
-            constraints.vertical_stretch.as_ref().map(|e| layout_info.stretch = expr_eval(e));
+            }
+            if let Some(e) = constraints.vertical_stretch.as_ref() {
+                layout_info.stretch = expr_eval(e);
+            }
         }
     }
 }

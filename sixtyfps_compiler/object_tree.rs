@@ -525,7 +525,9 @@ impl Element {
             };
             node.SubElement().for_each(|n| error_on(&n, "sub elements"));
             node.RepeatedElement().for_each(|n| error_on(&n, "sub elements"));
-            node.ChildrenPlaceholder().map(|n| error_on(&n, "sub elements"));
+            if let Some(n) = node.ChildrenPlaceholder() {
+                error_on(&n, "sub elements");
+            }
             node.CallbackConnection().for_each(|n| error_on(&n, "callback connections"));
             node.PropertyAnimation().for_each(|n| error_on(&n, "animations"));
             node.States().for_each(|n| error_on(&n, "states"));

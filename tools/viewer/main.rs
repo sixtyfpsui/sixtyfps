@@ -103,7 +103,7 @@ fn init_compiler(
     compiler
 }
 
-const PENDING_EVENTS: AtomicU32 = AtomicU32::new(0);
+static PENDING_EVENTS: AtomicU32 = AtomicU32::new(0);
 
 fn start_fswatch_thread(args: Cli) -> Result<Arc<Mutex<notify::RecommendedWatcher>>> {
     let (tx, rx) = std::sync::mpsc::channel();

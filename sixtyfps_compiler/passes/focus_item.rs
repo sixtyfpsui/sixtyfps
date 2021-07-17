@@ -55,8 +55,9 @@ fn find_focusable_element(
                 last_focus_forward_location = Some(location);
             }
             FocusCheckResult::ElementIsNotFocusable => {
-                last_focus_forward_location
-                    .map(|location| diag.push_error("element is not focusable".into(), &location));
+                if let Some(location) = last_focus_forward_location {
+                    diag.push_error("element is not focusable".into(), &location);
+                }
                 break None;
             }
         }

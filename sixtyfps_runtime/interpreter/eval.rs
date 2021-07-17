@@ -128,11 +128,11 @@ impl<'a, 'id> EvalLocalContext<'a, 'id> {
 }
 
 /// Evaluate an expression and return a Value as the result of this expression
-pub fn eval_expression(e: &Expression, local_context: &mut EvalLocalContext) -> Value {
+pub fn eval_expression(expression: &Expression, local_context: &mut EvalLocalContext) -> Value {
     if let Some(r) = &local_context.return_value {
         return r.clone();
     }
-    match e {
+    match expression {
         Expression::Invalid => panic!("invalid expression while evaluating"),
         Expression::Uncompiled(_) => panic!("uncompiled expression while evaluating"),
         Expression::TwoWayBinding(..) => panic!("invalid expression while evaluating"),
@@ -208,8 +208,8 @@ pub fn eval_expression(e: &Expression, local_context: &mut EvalLocalContext) -> 
                 Value::Void
             }
             Expression::BuiltinFunctionReference(BuiltinFunction::Mod, _) => {
-                let mut toint = |e| -> i32 { eval_expression(e, local_context).try_into().unwrap() };
-                Value::Number((toint(&arguments[0]) % toint(&arguments[1])) as _)
+                let mut to_int = |e| -> i32 { eval_expression(e, local_context).try_into().unwrap() };
+                Value::Number((to_int(&arguments[0]) % to_int(&arguments[1])) as _)
             }
             Expression::BuiltinFunctionReference(BuiltinFunction::Round, _) => {
                 let x: f64 = eval_expression(&arguments[0], local_context).try_into().unwrap();
@@ -522,7 +522,7 @@ pub fn eval_expression(e: &Expression, local_context: &mut EvalLocalContext) -> 
             Value::EnumerationValue(value.enumeration.name.clone(), value.to_string())
         }
         Expression::ReturnStatement(x) => {
-            let val = x.as_ref().map_or(Value::Void, |x| eval_expression(&x, local_context));
+            let val = x.as_ref().map_or(Value::Void, |x| eval_expression(x, local_context));
             if local_context.return_value.is_none() {
                 local_context.return_value = Some(val);
             }
@@ -532,7 +532,7 @@ pub fn eval_expression(e: &Expression, local_context: &mut EvalLocalContext) -> 
             let cache = load_property_helper(local_context.component_instance, &layout_cache_prop.element(), layout_cache_prop.name()).unwrap();
             if let Value::LayoutCache(cache) = cache {
                 if let Some(ri) = repeater_index {
-                    let offset : usize = eval_expression(&ri, local_context).try_into().unwrap();
+                    let offset : usize = eval_expression(ri, local_context).try_into().unwrap();
                     Value::Number(cache[(cache[*index] as usize) + offset * 2].into())
                 } else {
                     Value::Number(cache[*index].into())
@@ -660,7 +660,7 @@ fn load_property_helper(
     name: &str,
 ) -> Result<Value, ()> {
     generativity::make_guard!(guard);
-    match enclosing_component_instance_for_element(&element, component_instance, guard) {
+    match enclosing_component_instance_for_element(element, component_instance, guard) {
         ComponentInstance::InstanceRef(enclosing_component) => {
             let element = element.borrow();
             if element.id == element.enclosing_component.upgrade().unwrap().root_element.borrow().id
@@ -691,7 +691,7 @@ pub fn store_property(
     value: Value,
 ) -> Result<(), ()> {
     generativity::make_guard!(guard);
-    let enclosing_component = enclosing_component_for_element(&element, component_instance, guard);
+    let enclosing_component = enclosing_component_for_element(element, component_instance, guard);
     let maybe_animation = crate::dynamic_component::animation_for_property(
         enclosing_component,
         &element.borrow(),
@@ -843,7 +843,7 @@ pub fn new_struct_with_bindings<ElementType: 'static + Default + corelib::rtti::
     let mut element = ElementType::default();
     for (prop, info) in ElementType::fields::<Value>().into_iter() {
         if let Some(binding) = &bindings.get(prop) {
-            let value = eval_expression(&binding, local_context);
+            let value = eval_expression(binding, local_context);
             info.set_field(&mut element, value).unwrap();
         }
     }

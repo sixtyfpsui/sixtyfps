@@ -164,20 +164,20 @@ impl LayoutConstraints {
             *op = Some(NamedReference::new(element, prop))
         };
         let e = element.borrow();
-        e.bindings.get("height").map(|s| {
+        if let Some(s) = e.bindings.get("height") {
             constraints.fixed_height = true;
             apply_size_constraint("height", s, &mut constraints.min_height);
             apply_size_constraint("height", s, &mut constraints.max_height);
-        });
-        e.bindings.get("width").map(|s| {
+        }
+        if let Some(s) = e.bindings.get("width") {
             if s.expression.ty() == Type::Percent {
                 apply_size_constraint("width", s, &mut constraints.min_width);
-                return;
+            } else {
+                constraints.fixed_width = true;
+                apply_size_constraint("width", s, &mut constraints.min_width);
+                apply_size_constraint("width", s, &mut constraints.max_width);
             }
-            constraints.fixed_width = true;
-            apply_size_constraint("width", s, &mut constraints.min_width);
-            apply_size_constraint("width", s, &mut constraints.max_width);
-        });
+        }
 
         constraints
     }
@@ -227,14 +227,30 @@ impl LayoutConstraints {
     }
 
     pub fn visit_named_references(&mut self, visitor: &mut impl FnMut(&mut NamedReference)) {
-        self.max_width.as_mut().map(|e| visitor(&mut *e));
-        self.min_width.as_mut().map(|e| visitor(&mut *e));
-        self.max_height.as_mut().map(|e| visitor(&mut *e));
-        self.min_height.as_mut().map(|e| visitor(&mut *e));
-        self.preferred_width.as_mut().map(|e| visitor(&mut *e));
-        self.preferred_height.as_mut().map(|e| visitor(&mut *e));
-        self.horizontal_stretch.as_mut().map(|e| visitor(&mut *e));
-        self.vertical_stretch.as_mut().map(|e| visitor(&mut *e));
+        if let Some(e) = self.max_width.as_mut() {
+            visitor(&mut *e);
+        }
+        if let Some(e) = self.min_width.as_mut() {
+            visitor(&mut *e);
+        }
+        if let Some(e) = self.max_height.as_mut() {
+            visitor(&mut *e);
+        }
+        if let Some(e) = self.min_height.as_mut() {
+            visitor(&mut *e);
+        }
+        if let Some(e) = self.preferred_width.as_mut() {
+            visitor(&mut *e);
+        }
+        if let Some(e) = self.preferred_height.as_mut() {
+            visitor(&mut *e);
+        }
+        if let Some(e) = self.horizontal_stretch.as_mut() {
+            visitor(&mut *e);
+        }
+        if let Some(e) = self.vertical_stretch.as_mut() {
+            visitor(&mut *e);
+        }
     }
 }
 

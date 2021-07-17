@@ -665,7 +665,9 @@ impl<C: RepeatedComponent> Repeater<C> {
         let mut y_offset = inner.offset as f32 * inner.cached_item_height;
         viewport_width.set(listview_width);
         for c in self.inner.borrow().borrow().components.iter() {
-            c.1.as_ref().map(|x| x.as_pin_ref().listview_layout(&mut y_offset, viewport_width));
+            if let Some(x) = c.1.as_ref() {
+                x.as_pin_ref().listview_layout(&mut y_offset, viewport_width);
+            }
         }
         y_offset
     }
