@@ -1216,8 +1216,8 @@ pub fn instantiate<'id>(
                     InstanceRef::from_pin_ref(c, guard)
                 }),
             );
-            sixtyfps_corelib::model::ModelHandle(Some(Rc::new(
-                crate::value_model::ValueModel::new(m),
+            sixtyfps_corelib::model::ModelHandle::new(Rc::new(crate::value_model::ValueModel::new(
+                m,
             )))
         });
     }

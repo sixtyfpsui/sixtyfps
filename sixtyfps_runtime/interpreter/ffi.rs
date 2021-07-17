@@ -123,7 +123,10 @@ pub unsafe extern "C" fn sixtyfps_interpreter_value_new_model(
     model: vtable::VBox<ModelAdaptorVTable>,
     val: *mut ValueOpaque,
 ) {
-    std::ptr::write(val as *mut Value, Value::Model(Rc::new(ModelAdaptorWrapper(model))))
+    std::ptr::write(
+        val as *mut Value,
+        Value::Model(sixtyfps_corelib::model::SharedModel(Rc::new(ModelAdaptorWrapper(model)))),
+    )
 }
 
 #[no_mangle]

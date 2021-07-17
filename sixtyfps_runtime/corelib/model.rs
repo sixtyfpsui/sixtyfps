@@ -128,7 +128,7 @@ impl<T: 'static> VecModel<T> {
     where
         T: Clone,
     {
-        ModelHandle(Some(Rc::<Self>::new(slice.to_vec().into())))
+        ModelHandle::new(Rc::<Self>::new(slice.to_vec().into()))
     }
 
     /// Add a row at the end of the model
@@ -205,14 +205,51 @@ impl Model for bool {
     }
 }
 
+/// A shared model
+#[repr(transparent)]
+#[derive(derive_more::Deref, derive_more::DerefMut)]
+pub struct SharedModel<T>(pub Rc<dyn Model<Data = T>>);
+
+impl<T> std::fmt::Debug for SharedModel<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "SharedModel(dyn Model)")
+    }
+}
+
+impl<T> Clone for SharedModel<T> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+impl<T> core::cmp::PartialEq for SharedModel<T> {
+    #[allow(clippy::vtable_address_comparisons)]
+    // We think vtable_address_comparisons are safe here!
+    // Rc::ptr_eq will compare a fat pointer consisting of a `vtable` and a `self` pointer.
+    //
+    // We can get:
+    // * false positives: Two different `Model`s get considered the same, even though they are not.
+    //   For this the `self` pointer need to point to the same place. That can not happen here
+    //   since `Rc` will allocate for the refcounts, even if `T` is `()`.
+    // * false negatives: The same `Model` gets considered to be two different `Model`s.
+    //   In this case the `vtable` pointer must differ, e.g. because two crates created separate
+    //   instances of the vtable for the `Model` trait.
+    //   This will trigger some unnecessary rendering, but is benign otherwise.
+    fn eq(&self, other: &Self) -> bool {
+        Rc::ptr_eq(&self.0, &other.0)
+    }
+}
+
 /// Properties of type array in the .60 language are represented as
 /// an [`Option`] of an [`Rc`] of something implemented the [`Model`] trait
-#[derive(derive_more::Deref, derive_more::DerefMut, derive_more::From, derive_more::Into)]
-pub struct ModelHandle<T>(pub Option<Rc<dyn Model<Data = T>>>);
+#[derive(
+    PartialEq, derive_more::Deref, derive_more::DerefMut, derive_more::From, derive_more::Into,
+)]
+pub struct ModelHandle<T>(pub Option<SharedModel<T>>);
 
 impl<T> std::fmt::Debug for ModelHandle<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "ModelHandle({:?})", self.0.as_ref().map(|_| "dyn Model"))
+        write!(f, "ModelHandle({:?})", self.0.as_ref())
     }
 }
 
@@ -221,20 +258,10 @@ impl<T> Clone for ModelHandle<T> {
         Self(self.0.clone())
     }
 }
+
 impl<T> Default for ModelHandle<T> {
     fn default() -> Self {
         Self(None)
-    }
-}
-
-impl<T> core::cmp::PartialEq for ModelHandle<T> {
-    fn eq(&self, other: &Self) -> bool {
-        match (&self.0, &other.0) {
-            (None, None) => true,
-            (None, Some(_)) => false,
-            (Some(_), None) => false,
-            (Some(a), Some(b)) => Rc::ptr_eq(a, b),
-        }
     }
 }
 
@@ -247,7 +274,7 @@ impl<T> From<Rc<dyn Model<Data = T>>> for ModelHandle<T> {
 impl<T> ModelHandle<T> {
     /// Create a new handle wrapping the given model
     pub fn new(model: Rc<dyn Model<Data = T>>) -> Self {
-        Self(Some(model))
+        Self(Some(SharedModel(model)))
     }
 }
 

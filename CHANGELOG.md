@@ -5,6 +5,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+ - Changed the base class of `ModelHandle` to be a `SharedModel` which wraps the
+   `Rc<dyn Model>` that was used before.
+
 ### Added
 
  - Compilation error when there are duplicated element id

@@ -101,7 +101,7 @@ pub enum Value {
     /// An Array in the .60 language.
     Array(SharedVector<Value>),
     /// A more complex model which is not created by the interpreter itself (Value::Array can also be used for models)
-    Model(Rc<dyn sixtyfps_corelib::model::Model<Data = Value>>),
+    Model(sixtyfps_corelib::model::SharedModel<Value>),
     /// An object
     Struct(Struct),
     /// Correspond to `brush` or `color` type in .60.  For color, this is then a [`Brush::SolidColor`]
@@ -152,7 +152,7 @@ impl PartialEq for Value {
             Value::Bool(lhs) => matches!(other, Value::Bool(rhs) if lhs == rhs),
             Value::Image(lhs) => matches!(other, Value::Image(rhs) if lhs == rhs),
             Value::Array(lhs) => matches!(other, Value::Array(rhs) if lhs == rhs),
-            Value::Model(lhs) => matches!(other, Value::Model(rhs) if Rc::ptr_eq(lhs, rhs)),
+            Value::Model(lhs) => matches!(other, Value::Model(rhs) if lhs == rhs),
             Value::Struct(lhs) => matches!(other, Value::Struct(rhs) if lhs == rhs),
             Value::Brush(lhs) => matches!(other, Value::Brush(rhs) if lhs == rhs),
             Value::PathElements(lhs) => matches!(other, Value::PathElements(rhs) if lhs == rhs),
