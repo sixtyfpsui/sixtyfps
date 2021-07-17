@@ -1,8 +1,8 @@
-/* LICENSE BEGIN
-    This file is part of the SixtyFPS Project -- https://sixtyfps.io
+/* This file is part of the SixtyFPS Project -- https://sixtyfps.io
     Copyright (c) 2021 Olivier Goffart <olivier.goffart@sixtyfps.io>
     Copyright (c) 2021 Simon Hausmann <simon.hausmann@sixtyfps.io>
 
+LICENSE BEGIN
     SPDX-License-Identifier: GPL-3.0-only
     This file is also available under commercial licensing terms.
     Please contact info@sixtyfps.io for more information.
@@ -25,7 +25,7 @@ struct LicenseTagStyle {
 impl LicenseTagStyle {
     fn c_style_comment_style() -> Self {
         Self {
-            tag_start: "/* LICENSE BEGIN\n",
+            tag_start: "LICENSE BEGIN\n",
             line_prefix: "",
             line_indentation: "    ",
             tag_end: "LICENSE END */\n",
@@ -45,7 +45,7 @@ impl LicenseTagStyle {
         Self {
             tag_start: ".. LICENSE BEGIN\n",
             line_prefix: "..",
-            line_indentation: "    ",
+            line_indentation: "   ",
             tag_end: ".. LICENSE END\n",
         }
     }
@@ -270,10 +270,6 @@ const EXPECTED_SPDX_EXPRESSION: &str = "GPL-3.0-only";
 const EXPECTED_SPDX_ID: &str = "SPDX-License-Identifier: GPL-3.0-only";
 
 const EXPECTED_HEADER: LicenseHeader<'static> = LicenseHeader(&[
-    "This file is part of the SixtyFPS Project -- https://sixtyfps.io",
-    "Copyright (c) 2021 Olivier Goffart <olivier.goffart@sixtyfps.io>",
-    "Copyright (c) 2021 Simon Hausmann <simon.hausmann@sixtyfps.io>",
-    "",
     EXPECTED_SPDX_ID,
     "This file is also available under commercial licensing terms.",
     "Please contact info@sixtyfps.io for more information.",
