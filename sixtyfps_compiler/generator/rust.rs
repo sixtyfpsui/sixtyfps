@@ -12,8 +12,11 @@ LICENSE END */
 Some convention used in the generated code:
  - `_self` is of type `Pin<&ComponentType>`  where ComponentType is the type of the generated component,
     this is existing for any evaluation of a binding
- - `self_rc` is of type `VRc<ComponentVTable, ComponentType>` or Rc<ComponentType> for globals
+ - `self_rc` is of type `VRc<ComponentVTable, ComponentType>` or `Rc<ComponentType>` for globals
     this is usually a local variable to the init code that shouldn't rbe relied upon by the binding code.
+ - `self_mapped` is of type `VRcMapped<ComponentVTable, ComponentType>` or `Rc<ComponentType>` for globals,
+    it is also used in the init code and in code that can initialize repeater's component
+
 */
 
 use crate::diagnostics::{BuildDiagnostics, Spanned};
@@ -165,24 +168,29 @@ fn handle_property_binding(
 ) {
     let rust_property = access_member(item_rc, prop_name, component, quote!(_self), false);
     let prop_type = item_rc.borrow().lookup_property(prop_name).property_type;
-    let (downgrade, upgrade) =
-        if item_rc.borrow().enclosing_component.upgrade().unwrap().is_global() {
-            (
-                quote!(let self_weak = sixtyfps::re_exports::PinWeak::downgrade(self_rc.clone());),
-                quote!(
-                    let self_rc = self_weak.upgrade().unwrap();
-                    let _self = self_rc.as_ref();
-                ),
-            )
-        } else {
-            (
-                quote!(let self_weak = sixtyfps::re_exports::VRc::downgrade(&self_rc);),
-                quote!(
-                    let self_rc = self_weak.upgrade().unwrap();
-                    let _self = self_rc.as_pin_ref();
-                ),
-            )
-        };
+    let (downgrade, upgrade) = if item_rc
+        .borrow()
+        .enclosing_component
+        .upgrade()
+        .unwrap()
+        .is_global()
+    {
+        (
+            quote!(let self_weak = sixtyfps::re_exports::PinWeak::downgrade(self_mapped.clone());),
+            quote!(
+                let self_mapped = self_weak.upgrade().unwrap();
+                let _self = self_mapped.as_ref();
+            ),
+        )
+    } else {
+        (
+            quote!(let self_weak = sixtyfps::re_exports::VRcMapped::downgrade(&self_mapped);),
+            quote!(
+                let self_mapped = self_weak.upgrade().unwrap();
+                let _self = self_mapped.as_pin_ref();
+            ),
+        )
+    };
 
     if matches!(prop_type, Type::Callback { .. }) {
         let tokens_for_expression = compile_expression(binding_expression, component);
@@ -312,6 +320,7 @@ fn generate_component(
                     .collect::<Vec<_>>();
                 let caller_ident = format_ident!("invoke_{}", prop_name);
                 property_and_callback_accessors.push(quote!(
+
                     #[allow(dead_code)]
                     pub fn #caller_ident(&self, #(#args_name : #callback_args,)*) -> #return_type {
                         let _self = vtable::VRc::as_pin_ref(&self.0);
@@ -396,6 +405,7 @@ fn generate_component(
     let mut repeated_visit_branch = Vec::new();
     let mut repeated_input_branch = Vec::new();
     let mut init = Vec::new();
+    let mut binding_and_handler_setup_code = Vec::new();
     let mut window_field_init = None;
     let mut window_parent_param = None;
     super::build_array_helper(component, |item_rc, children_index, parent_index| {
@@ -491,12 +501,12 @@ fn generate_component(
             }
 
             // FIXME: there could be an optimization if `repeated.model.is_constant()`, we don't need a binding
-            init.push(quote! {
+            binding_and_handler_setup_code.push(quote! {
                 _self.#repeater_id.set_model_binding({
-                    let self_weak = sixtyfps::re_exports::VRc::downgrade(&self_rc);
+                    let self_weak = sixtyfps::re_exports::VRcMapped::downgrade(&self_mapped);
                     move || {
-                        let self_rc = self_weak.upgrade().unwrap();
-                        let _self = self_rc.as_pin_ref();
+                        let self_mapped = self_weak.upgrade().unwrap();
+                        let _self = self_mapped.as_pin_ref();
                         (#model) as _
                     }
                 });
@@ -769,18 +779,28 @@ fn generate_component(
         .map(|g| (format_ident!("global_{}", public_component_id(g)), self::inner_component_id(g)))
         .unzip();
 
-    let new_code = if !component.is_global() {
-        quote! {
-            let self_rc = VRc::new(self_);
-            self_rc.self_weak.set(VRc::downgrade(&self_rc)).map_err(|_|())
-                .expect("Can only be pinned once");
-            let _self = self_rc.as_pin_ref();
-        }
+    let (new_code, self_mapped_type, self_mapped_init_code) = if !component.is_global() {
+        (
+            quote! {
+                let self_rc = VRc::new(self_);
+                self_rc.self_weak.set(VRc::downgrade(&self_rc)).map_err(|_|())
+                        .expect("Can only be pinned once");
+                let _self = self_rc.as_pin_ref();
+                let self_mapped = sixtyfps::re_exports::VRc::map(self_rc.clone(), |s| s);
+            },
+            quote!(&sixtyfps::re_exports::VRcMapped<sixtyfps::re_exports::ComponentVTable, Self>),
+            quote!(self_mapped.as_pin_ref()),
+        )
     } else {
-        quote! {
-            let self_rc = ::std::rc::Rc::pin(self_);
-            let _self = self_rc.as_ref();
-        }
+        (
+            quote! {
+                let self_rc = ::std::rc::Rc::pin(self_);
+                let _self = self_rc.as_ref();
+                let self_mapped = self_rc.clone();
+            },
+            quote!(&::core::pin::Pin<::std::rc::Rc<Self>>),
+            quote!(self_mapped.as_ref()),
+        )
     };
     let self_weak = if !component.is_global() { Some(quote!(self_weak)) } else { None };
     let self_weak = self_weak.into_iter().collect::<Vec<_>>();
@@ -876,6 +896,13 @@ fn generate_component(
         #component_impl
 
         impl #inner_component_id{
+            fn init(self_mapped: #self_mapped_type)
+            {
+                #![allow(unused)]
+                let _self = #self_mapped_init_code;
+                #(#binding_and_handler_setup_code)*
+            }
+
             pub fn new(#(parent: sixtyfps::re_exports::VWeak::<sixtyfps::re_exports::ComponentVTable, #parent_component_type>)* #window_parent_param)
                 -> #component_handle
             {
@@ -893,6 +920,7 @@ fn generate_component(
                 };
                 #new_code
                 #(#init)*
+                Self::init(&self_mapped);
                 self_rc.into()
             }
             #item_tree_impl

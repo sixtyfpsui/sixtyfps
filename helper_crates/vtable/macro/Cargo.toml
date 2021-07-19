@@ -1,6 +1,6 @@
 [package]
 name = "vtable-macro"
-version = "0.1.2"
+version = "0.1.3"
 authors = ["SixtyFPS <info@sixtyfps.io>"]
 edition = "2018"
 license = "GPL-3.0-only"
